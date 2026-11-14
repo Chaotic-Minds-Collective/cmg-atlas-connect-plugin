@@ -2,11 +2,11 @@
   "name": "@chaotic-minds-gaming/atlas-connect",
   "version": "0.1.0",
   "private": true,
-  "description": "Public chat message, Core event normalization and relay policy contracts for CMG ATLAS.",
+  "description": "Public chat message, Core event normalization and delivery policy contracts for CMG ATLAS.",
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
-    "check": "node --check src/message.js && node --check src/core-event.js && node --check test/message.test.js && node --check test/core-event.test.js",
+    "check": "node --check src/message.js && node --check src/core-event.js && node --check src/delivery.js && node --check test/message.test.js && node --check test/core-event.test.js && node --check test/delivery.test.js",
     "test": "node --test"
   }
 }
