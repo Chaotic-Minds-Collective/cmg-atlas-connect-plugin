@@ -6,7 +6,7 @@
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
-    "check": "node --check src/message.js && node --check src/core-event.js && node --check src/delivery.js && node --check test/message.test.js && node --check test/core-event.test.js && node --check test/delivery.test.js",
+    "check": "node --check src/message.js && node --check src/core-event.js && node --check src/delivery.js && node --check src/core-outbox-client.js && node --check test/message.test.js && node --check test/core-event.test.js && node --check test/delivery.test.js && node --check test/core-outbox-client.test.js",
     "test": "node --test"
   }
 }
