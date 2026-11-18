@@ -4,9 +4,19 @@
   "private": true,
   "description": "Public chat message, Core event normalization and delivery policy contracts for CMG ATLAS.",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "check": "node --check src/message.js && node --check src/core-event.js && node --check src/delivery.js && node --check src/core-outbox-client.js && node --check test/message.test.js && node --check test/core-event.test.js && node --check test/delivery.test.js && node --check test/core-outbox-client.test.js",
+    "check": "node --check src/index.js && node --check src/message.js && node --check src/core-event.js && node --check src/delivery.js && node --check src/core-outbox-client.js && node --check test/index.test.js && node --check test/message.test.js && node --check test/core-event.test.js && node --check test/delivery.test.js && node --check test/core-outbox-client.test.js",
     "test": "node --test"
+  },
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./message": "./src/message.js",
+    "./delivery": "./src/delivery.js",
+    "./core-event": "./src/core-event.js",
+    "./core-outbox-client": "./src/core-outbox-client.js"
   }
 }
