@@ -23,11 +23,17 @@ Core's published contract defines the outbox wrapper and normalized event types,
 ## Architecture and dependencies
 
 - Core identity, scoped RBAC, server registry and outbox
-- ATLAS adapter: verified connect/disconnect/chat callbacks
+- ATLAS adapter: intended source of connect/disconnect/chat callbacks; live callback behavior remains unverified (see [native validation issue #11](https://github.com/Chaotic-Minds-Collective/cmg-atlas-plugin/issues/11))
 - CMG Tribes for membership
 - Discord service integration; Discord roles are not Core permissions
 
 Core remains authoritative for shared identity, authorization and platform records. ATLAS-native calls pass through the shared adapter. This module owns its domain state and must not connect directly to PostgreSQL.
+
+## Package API
+
+The package exposes a stable ESM root entrypoint for the existing message envelope, relay policy, Core event normalizer, retry helpers and Core outbox client. Explicit subpath exports are also available for those modules.
+
+This repository is a private Git-based dependency and is not published to npm. Internal consumers should pin a reviewed Git commit SHA. The package root does not invent native chat payload fields or Discord channel routing; callers must supply a normalized message and an explicitly allowlisted destination.
 
 ## Development
 
