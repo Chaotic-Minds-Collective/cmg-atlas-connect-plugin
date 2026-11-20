@@ -12,21 +12,13 @@ const outbox = createCoreEventOutboxClient({
 });
 
 const events = await outbox.claim({ limit: 1, leaseSeconds: 120 });
-for (const event of events) {
-  // Keep the active lease alive while downstream work is running.
-  const renewal = setInterval(() => {
-    void outbox.renew(event, { leaseSeconds: 120 }).catch(() => {
-      // Stop downstream work if renewal fails; do not acknowledge a stale lease.
-    });
-  }, 40_000);
-
-  try {
-    // Normalize and process the event in the caller.
-    // Acknowledge only after the caller has durably completed its work.
-    await outbox.acknowledge(event, "delivered");
-  } finally {
-    clearInterval(renewal);
-  }
+const event = events[0];
+if (event) {
+  // The caller owns a heartbeat and must abort downstream work if renewal fails.
+  await outbox.renew(event, { leaseSeconds: 120 });
+  await processEvent(event);
+  // Acknowledge only after durable processing has completed.
+  await outbox.acknowledge(event, "delivered");
 }
 ```
 
