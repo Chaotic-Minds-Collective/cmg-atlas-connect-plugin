@@ -57,8 +57,9 @@ test("rejects a claim response containing an event from another server", async (
   const client = createClient(async () => response([{
     id: EVENT_ID,
     eventType: "game.event.received",
-    payload: { serverId: "44444444-4444-4444-8444-444444444444" },
-    leaseToken: LEASE_TOKEN
+    payload: { serverId: "44444444-4444-4444-8444-444444444444", eventType: "chat.global" },
+    leaseToken: LEASE_TOKEN,
+    leaseExpiresAt: new Date(Date.now() + 120000).toISOString()
   }]));
   await assert.rejects(client.claim(), /outside the requested server scope/);
 });
