@@ -35,7 +35,8 @@ test("claims only the requested server scope and returns immutable claimed rows"
       id: EVENT_ID,
       eventType: "game.event.received",
       payload: { serverId: SERVER_ID, eventType: "chat.global" },
-      leaseToken: LEASE_TOKEN
+      leaseToken: LEASE_TOKEN,
+      leaseExpiresAt: new Date(Date.now() + 120000).toISOString()
     }]);
   });
 
@@ -107,7 +108,39 @@ test("validates HTTPS origin, server UUID, claim bounds and acknowledgement inpu
   }), /UUID/);
 
   const client = createClient(async () => response([]));
+  await assert.rejects(client.claim({ limit: 2 }), /limit must be an integer/);
   await assert.rejects(client.claim({ limit: 101 }), /limit must be an integer/);
   await assert.rejects(client.claim({ leaseSeconds: 10 }), /leaseSeconds must be an integer/);
   await assert.rejects(client.acknowledge({ id: EVENT_ID, leaseToken: LEASE_TOKEN }, "unknown"), /outcome/);
+});
+
+
+test("renews an active Core event lease using the same event ID and fencing token", async () => {
+  let request;
+  const expires = new Date(Date.now() + 180000).toISOString();
+  const client = createClient(async (url, options) => {
+    request = { url, options };
+    return response({ renewed: true, eventId: EVENT_ID, leaseExpiresAt: expires });
+  });
+  const result = await client.renew({ id: EVENT_ID, leaseToken: LEASE_TOKEN }, { leaseSeconds: 180 });
+  assert.equal(result.renewed, true);
+  assert.equal(result.eventId, EVENT_ID);
+  assert.equal(result.leaseExpiresAt, expires);
+  assert.ok(Object.isFrozen(result));
+  assert.equal(request.url, "https://core.example.test/integrations/servers/" + SERVER_ID + "/events/" + EVENT_ID + "/renew");
+  assert.deepEqual(JSON.parse(request.options.body), { leaseToken: LEASE_TOKEN, leaseSeconds: 180 });
+  assert.equal(request.options.headers.authorization, "Bearer secret-token");
+});
+
+test("rejects stale lease renewal and malformed renewal responses", async () => {
+  const conflictClient = createClient(async () => response(null, 409));
+  await assert.rejects(
+    conflictClient.renew({ id: EVENT_ID, leaseToken: LEASE_TOKEN }),
+    (error) => error.status === 409 && error.code === "EVENT_LEASE_INVALID"
+  );
+  const malformedClient = createClient(async () => response({ renewed: false, eventId: EVENT_ID, leaseExpiresAt: "not-a-date" }));
+  await assert.rejects(
+    malformedClient.renew({ id: EVENT_ID, leaseToken: LEASE_TOKEN }),
+    /did not confirm the requested event/
+  );
 });
