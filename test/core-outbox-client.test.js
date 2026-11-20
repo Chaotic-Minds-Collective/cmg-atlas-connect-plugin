@@ -40,7 +40,7 @@ test("claims only the requested server scope and returns immutable claimed rows"
     }]);
   });
 
-  const events = await client.claim({ limit: 10, leaseSeconds: 60 });
+  const events = await client.claim({ limit: 1, leaseSeconds: 60 });
   assert.equal(events.length, 1);
   assert.equal(events[0].id, EVENT_ID);
   assert.ok(Object.isFrozen(events));
@@ -48,7 +48,7 @@ test("claims only the requested server scope and returns immutable claimed rows"
   assert.equal(request.url, "https://core.example.test/integrations/servers/" + SERVER_ID + "/events/claim");
   assert.equal(request.options.method, "POST");
   assert.equal(request.options.headers.authorization, "Bearer secret-token");
-  assert.deepEqual(JSON.parse(request.options.body), { limit: 10, leaseSeconds: 60 });
+  assert.deepEqual(JSON.parse(request.options.body), { limit: 1, leaseSeconds: 60, eventTypes: ["chat.global", "chat.tribe"] });
   assert.equal(request.options.cache, "no-store");
   assert.equal(request.options.redirect, "error");
 });
@@ -109,6 +109,8 @@ test("validates HTTPS origin, server UUID, claim bounds and acknowledgement inpu
 
   const client = createClient(async () => response([]));
   await assert.rejects(client.claim({ limit: 2 }), /limit must be an integer/);
+  await assert.rejects(client.claim({ eventTypes: ["player.joined"] }), /only unique chat.global and chat.tribe/);
+  await assert.rejects(client.claim({ eventTypes: [] }), /non-empty array/);
   await assert.rejects(client.claim({ limit: 101 }), /limit must be an integer/);
   await assert.rejects(client.claim({ leaseSeconds: 10 }), /leaseSeconds must be an integer/);
   await assert.rejects(client.acknowledge({ id: EVENT_ID, leaseToken: LEASE_TOKEN }, "unknown"), /outcome/);
@@ -143,4 +145,19 @@ test("rejects stale lease renewal and malformed renewal responses", async () => 
     malformedClient.renew({ id: EVENT_ID, leaseToken: LEASE_TOKEN }),
     /did not confirm the requested event/
   );
+});
+
+
+test("allows Connect to claim only an explicit subset of supported chat event types", async () => {
+  let request;
+  const client = createClient(async (url, options) => {
+    request = { url, options };
+    return response([]);
+  });
+  await client.claim({ eventTypes: ["chat.tribe"] });
+  assert.deepEqual(JSON.parse(request.options.body), {
+    limit: 1,
+    leaseSeconds: 120,
+    eventTypes: ["chat.tribe"]
+  });
 });

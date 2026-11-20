@@ -75,4 +75,4 @@ Core's current published contract does not specify canonical inner chat fields o
 
 ## Current readiness
 
-The public message envelope, pure relay policy and Core public-chat outbox wrapper adapter are implemented. The Core outbox client now exposes fenced lease renewal and enforces one-event claims until a worker can heartbeat every outstanding lease concurrently. Canonical chat payload fields, Connect channel routing, durable delivery receipts, Discord delivery and native ATLAS callback compatibility remain future work.
+The public message envelope, pure relay policy and Core public-chat outbox wrapper adapter are implemented. The Core outbox client filters claims to `chat.global` and `chat.tribe`, exposes fenced lease renewal, and enforces one-event claims until a worker can heartbeat every outstanding lease concurrently. Canonical chat payload fields, Connect channel routing, durable delivery receipts, Discord delivery and native ATLAS callback compatibility remain future work.

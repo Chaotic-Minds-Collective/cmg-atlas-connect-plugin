@@ -15,5 +15,6 @@ export { normalizeCoreChatEvent } from "./core-event.js";
 
 export {
   createCoreEventOutboxClient,
-  CORE_EVENT_OUTBOX_CLIENT_DEFAULTS
+  CORE_EVENT_OUTBOX_CLIENT_DEFAULTS,
+  CONNECT_CORE_EVENT_TYPES
 } from "./core-outbox-client.js";
