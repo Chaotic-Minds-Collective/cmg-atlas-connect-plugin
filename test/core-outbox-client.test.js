@@ -35,11 +35,12 @@ test("claims only the requested server scope and returns immutable claimed rows"
       id: EVENT_ID,
       eventType: "game.event.received",
       payload: { serverId: SERVER_ID, eventType: "chat.global" },
-      leaseToken: LEASE_TOKEN
+      leaseToken: LEASE_TOKEN,
+      leaseExpiresAt: new Date(Date.now() + 120000).toISOString()
     }]);
   });
 
-  const events = await client.claim({ limit: 10, leaseSeconds: 60 });
+  const events = await client.claim({ limit: 1, leaseSeconds: 60 });
   assert.equal(events.length, 1);
   assert.equal(events[0].id, EVENT_ID);
   assert.ok(Object.isFrozen(events));
@@ -47,7 +48,7 @@ test("claims only the requested server scope and returns immutable claimed rows"
   assert.equal(request.url, "https://core.example.test/integrations/servers/" + SERVER_ID + "/events/claim");
   assert.equal(request.options.method, "POST");
   assert.equal(request.options.headers.authorization, "Bearer secret-token");
-  assert.deepEqual(JSON.parse(request.options.body), { limit: 10, leaseSeconds: 60 });
+  assert.deepEqual(JSON.parse(request.options.body), { limit: 1, leaseSeconds: 60, eventTypes: ["chat.global", "chat.tribe"] });
   assert.equal(request.options.cache, "no-store");
   assert.equal(request.options.redirect, "error");
 });
@@ -56,8 +57,9 @@ test("rejects a claim response containing an event from another server", async (
   const client = createClient(async () => response([{
     id: EVENT_ID,
     eventType: "game.event.received",
-    payload: { serverId: "44444444-4444-4444-8444-444444444444" },
-    leaseToken: LEASE_TOKEN
+    payload: { serverId: "44444444-4444-4444-8444-444444444444", eventType: "chat.global" },
+    leaseToken: LEASE_TOKEN,
+    leaseExpiresAt: new Date(Date.now() + 120000).toISOString()
   }]));
   await assert.rejects(client.claim(), /outside the requested server scope/);
 });
@@ -107,7 +109,56 @@ test("validates HTTPS origin, server UUID, claim bounds and acknowledgement inpu
   }), /UUID/);
 
   const client = createClient(async () => response([]));
+  await assert.rejects(client.claim({ limit: 2 }), /limit must be an integer/);
+  await assert.rejects(client.claim({ eventTypes: ["player.joined"] }), /only unique chat.global and chat.tribe/);
+  await assert.rejects(client.claim({ eventTypes: [] }), /non-empty array/);
   await assert.rejects(client.claim({ limit: 101 }), /limit must be an integer/);
   await assert.rejects(client.claim({ leaseSeconds: 10 }), /leaseSeconds must be an integer/);
   await assert.rejects(client.acknowledge({ id: EVENT_ID, leaseToken: LEASE_TOKEN }, "unknown"), /outcome/);
+});
+
+
+test("renews an active Core event lease using the same event ID and fencing token", async () => {
+  let request;
+  const expires = new Date(Date.now() + 180000).toISOString();
+  const client = createClient(async (url, options) => {
+    request = { url, options };
+    return response({ renewed: true, eventId: EVENT_ID, leaseExpiresAt: expires });
+  });
+  const result = await client.renew({ id: EVENT_ID, leaseToken: LEASE_TOKEN }, { leaseSeconds: 180 });
+  assert.equal(result.renewed, true);
+  assert.equal(result.eventId, EVENT_ID);
+  assert.equal(result.leaseExpiresAt, expires);
+  assert.ok(Object.isFrozen(result));
+  assert.equal(request.url, "https://core.example.test/integrations/servers/" + SERVER_ID + "/events/" + EVENT_ID + "/renew");
+  assert.deepEqual(JSON.parse(request.options.body), { leaseToken: LEASE_TOKEN, leaseSeconds: 180 });
+  assert.equal(request.options.headers.authorization, "Bearer secret-token");
+});
+
+test("rejects stale lease renewal and malformed renewal responses", async () => {
+  const conflictClient = createClient(async () => response(null, 409));
+  await assert.rejects(
+    conflictClient.renew({ id: EVENT_ID, leaseToken: LEASE_TOKEN }),
+    (error) => error.status === 409 && error.code === "EVENT_LEASE_INVALID"
+  );
+  const malformedClient = createClient(async () => response({ renewed: false, eventId: EVENT_ID, leaseExpiresAt: "not-a-date" }));
+  await assert.rejects(
+    malformedClient.renew({ id: EVENT_ID, leaseToken: LEASE_TOKEN }),
+    /did not confirm the requested event/
+  );
+});
+
+
+test("allows Connect to claim only an explicit subset of supported chat event types", async () => {
+  let request;
+  const client = createClient(async (url, options) => {
+    request = { url, options };
+    return response([]);
+  });
+  await client.claim({ eventTypes: ["chat.tribe"] });
+  assert.deepEqual(JSON.parse(request.options.body), {
+    limit: 1,
+    leaseSeconds: 120,
+    eventTypes: ["chat.tribe"]
+  });
 });

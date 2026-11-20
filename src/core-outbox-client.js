@@ -1,6 +1,8 @@
 const DEFAULT_TIMEOUT_MS = 5_000;
 const MAX_TIMEOUT_MS = 30_000;
-const MAX_CLAIM_LIMIT = 100;
+const MAX_CLAIM_LIMIT = 1;
+const CONNECT_EVENT_TYPES = Object.freeze(["chat.global", "chat.tribe"]);
+const CONNECT_EVENT_TYPE_SET = new Set(CONNECT_EVENT_TYPES);
 const MIN_LEASE_SECONDS = 15;
 const MAX_LEASE_SECONDS = 300;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -105,13 +107,24 @@ export function createCoreEventOutboxClient(options) {
     if (!options || typeof options !== "object" || Array.isArray(options)) {
       throw new TypeError("claim options must be an object");
     }
-    const limit = options.limit ?? 25;
+    const limit = options.limit ?? 1;
     const leaseSeconds = options.leaseSeconds ?? 120;
+    const eventTypes = options.eventTypes ?? CONNECT_EVENT_TYPES;
     positiveInteger(limit, "limit", 1, MAX_CLAIM_LIMIT);
     positiveInteger(leaseSeconds, "leaseSeconds", MIN_LEASE_SECONDS, MAX_LEASE_SECONDS);
+    if (!Array.isArray(eventTypes) || eventTypes.length < 1 || eventTypes.length > 50) {
+      throw new TypeError("eventTypes must be a non-empty array of supported Connect event types");
+    }
+    const normalizedEventTypes = eventTypes.map((type, index) =>
+      nonEmptyString(type, "eventTypes[" + index + "]")
+    );
+    if (new Set(normalizedEventTypes).size !== normalizedEventTypes.length ||
+        normalizedEventTypes.some((type) => !CONNECT_EVENT_TYPE_SET.has(type))) {
+      throw new TypeError("eventTypes may contain only unique chat.global and chat.tribe values");
+    }
 
     const path = "/integrations/servers/" + encodeURIComponent(serverId) + "/events/claim";
-    const data = await request(path, { limit, leaseSeconds });
+    const data = await request(path, { limit, leaseSeconds, eventTypes: normalizedEventTypes });
     if (!Array.isArray(data)) throw new TypeError("Core claim response data must be an array");
     return Object.freeze(data.map((event, index) => {
       if (!event || typeof event !== "object" || Array.isArray(event)) {
@@ -119,14 +132,39 @@ export function createCoreEventOutboxClient(options) {
       }
       uuid(event.id, "claimed event id");
       uuid(event.leaseToken, "claimed event leaseToken");
+      if (typeof event.leaseExpiresAt !== "string" || !Number.isFinite(Date.parse(event.leaseExpiresAt))) {
+        throw new TypeError("Core claim response contains an invalid lease expiry");
+      }
       if (event.eventType !== "game.event.received" ||
           !event.payload || typeof event.payload !== "object" ||
           Array.isArray(event.payload) ||
-          event.payload.serverId !== serverId) {
+          event.payload.serverId !== serverId ||
+          !normalizedEventTypes.includes(event.payload.eventType)) {
         throw new TypeError("Core claim response contains an event outside the requested server scope");
       }
       return Object.freeze({ ...event });
     }));
+  }
+
+  async function renew(event, options = {}) {
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+      throw new TypeError("event must be a claimed event object");
+    }
+    if (!options || typeof options !== "object" || Array.isArray(options)) {
+      throw new TypeError("renew options must be an object");
+    }
+    const eventId = uuid(event.id, "event.id");
+    const leaseToken = uuid(event.leaseToken, "event.leaseToken");
+    const leaseSeconds = options.leaseSeconds ?? 120;
+    positiveInteger(leaseSeconds, "leaseSeconds", MIN_LEASE_SECONDS, MAX_LEASE_SECONDS);
+    const path = "/integrations/servers/" + encodeURIComponent(serverId) +
+      "/events/" + encodeURIComponent(eventId) + "/renew";
+    const data = await request(path, { leaseToken, leaseSeconds });
+    if (!data || data.renewed !== true || data.eventId !== eventId ||
+        typeof data.leaseExpiresAt !== "string" || !Number.isFinite(Date.parse(data.leaseExpiresAt))) {
+      throw new TypeError("Core lease renewal response did not confirm the requested event");
+    }
+    return Object.freeze({ ...data });
   }
 
   async function acknowledge(event, outcome, error) {
@@ -157,16 +195,20 @@ export function createCoreEventOutboxClient(options) {
 
   return Object.freeze({
     claim,
+    renew,
     acknowledge,
     serverId
   });
 }
 
+export const CONNECT_CORE_EVENT_TYPES = CONNECT_EVENT_TYPES;
+
 export const CORE_EVENT_OUTBOX_CLIENT_DEFAULTS = Object.freeze({
   timeoutMs: DEFAULT_TIMEOUT_MS,
   maxTimeoutMs: MAX_TIMEOUT_MS,
-  claimLimit: 25,
+  claimLimit: 1,
   maxClaimLimit: MAX_CLAIM_LIMIT,
+  eventTypes: CONNECT_EVENT_TYPES,
   leaseSeconds: 120,
   minLeaseSeconds: MIN_LEASE_SECONDS,
   maxLeaseSeconds: MAX_LEASE_SECONDS
